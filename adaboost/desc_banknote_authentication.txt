@@ -1,1 +1,0 @@
-varianceWT,skewnessWT,curtosisWT,entropyWT,class
