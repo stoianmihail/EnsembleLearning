@@ -4,14 +4,6 @@ import numpy as np
 import math
 import time
 
-# Classical models
-from sklearn.linear_model import LogisticRegression
-from sklearn.naive_bayes import GaussianNB
-from sklearn.model_selection import train_test_split
-
-# The Benchmark
-from pmlb import fetch_data
-
 # The dataclass type and its features
 from dataclasses import dataclass
 from typing import List
@@ -19,48 +11,10 @@ from typing import List
 # The binary search for the performant prediction
 from bisect import bisect_left
 
-# The plotter
-import matplotlib.pyplot as plt
+####
+# A performant implementation with auto-tuning of AdaBoost ensemble learning algorithm
+####
 
-@dataclass
-class DataReader:
-  useBenchmark: bool = True # if we use the PML benchmark (https://github.com/EpistasisLab/penn-ml-benchmarks)
-  
-  # The constructor
-  def __init__(self, useBenchmark = True):
-    self.useBenchmark = useBenchmark
-  
-  # Read the data
-  def read(self, dataName):
-    # Default value?
-    if not self.useBenchmark:
-      # Read custom data from the file 'dataName' and exclude header
-      with open(dataName, 'r') as file:
-        X = []
-        y = []
-        next(file)
-        for line in file:
-          args = line.split(',')
-          size = len(args)
-          curr = [float(x) for x in args[:(size - 1)]]
-          label = int(args[size - 1])
-          X.append(curr)
-          y.append(label)
-        return X, y
-    else:
-      # Read data from benchmark
-      X, y = fetch_data(dataName, return_X_y = True, local_cache_dir = '.')
-      if len(X) != len(y):
-        print("x-axis and y-axis do not have the same size")
-        sys.exit(1)
-      if len(X) == 0:
-        print("data is empty")
-        sys.exit(1)
-      
-      # And remove the file
-      os.remove(dataName + ".tsv.gz")
-      return X, y
-    
 @dataclass
 class Stump:
   error: float = 1     # Used for computing the minimum error 
@@ -112,15 +66,13 @@ class Stump:
 @dataclass
 class AdaBoost:
   learners: List[Stump]
-  T: int = 100          # Number of rounds to run
   numFeatures: int = 0
+  DEFAULT_T = 10
+  MAX_EFFORT = 1e6
 
   # The constructor
-  def __init__(self, T):
-    if T <= 0:
-      print("AdaBoost needs a positive number of iterations")
-      sys.exit(1)
-    self.T = T
+  def __init__(self):
+    pass
   
   # Check the data and transform it into a more convenient way
   def preprocessing(self, X, y):
@@ -226,9 +178,14 @@ class AdaBoost:
     # Compute the initial weights of the "-" class
     totalMinusWeight = [(1.0 / n) * len(list(filter(lambda index: not y[index], range(n))))]
       
+    # Compute the number of rounds to run
+    T = self.DEFAULT_T
+    if n < self.MAX_EFFORT:
+      T = int(self.MAX_EFFORT / n)
+      
     # And compute
     self.learners = []
-    for iteration in range(self.T):
+    for iteration in range(T):
       learner = Stump()
       for index in range(self.numFeatures):
         # Note that the last iteration is in vain
@@ -265,7 +222,7 @@ class AdaBoost:
     return int(H > 0)
   
   # Compute test error
-  def score(self, X, y):
+  def score(self, X, y) -> float:
     if len(X) != len(y):
       print("x-axis and y-axis of test data do not have the same size")
       sys.exit(1)
@@ -353,50 +310,3 @@ class AdaBoost:
         correctClassified += int(expected == predicted)
       accuracy = float(correctClassified / n)
       return accuracy
-
-def benchmark(dataName, tuning):
-  dataReader = DataReader()
-  X, y = dataReader.read(dataName)
-  train_X, test_X, train_y, test_y = train_test_split(X, y)
-
-  print("Train data: " + str(len(train_X)))
-  print("Test data: " + str(len(test_X)))
-
-  if False:
-    adaBoost = AdaBoost(tuning)
-    
-    start = time.time()
-    adaBoost.fit(train_X, train_y)
-    end = time.time()
-    print("adaBoost.fit took: " + str(end - start))
-    
-    start = time.time()
-    adaBoostScore = adaBoost.score(test_X, test_y)
-    end = time.time()
-    print("adaBoost.score took: " + str(end - start))
-    
-    print("adaBoost accuracy=" + str(adaBoostScore))
-  else:
-    adaBoost = AdaBoost(tuning)
-    logit = LogisticRegression()
-    gnb = GaussianNB()
-
-    adaBoost.fit(train_X, train_y)
-    logit.fit(train_X, train_y)
-    gnb.fit(train_X, train_y)
-    
-    adaBoostScore = adaBoost.score(test_X, test_y)
-    logitScore = logit.score(test_X, test_y)
-    gnbScore = gnb.score(test_X, test_y)
-
-    print("adaBoost=" + str(adaBoostScore))
-    print("logic=" + str(logitScore))
-    print("gauss=" + str(gnbScore))
-  pass
-  
-def main(dataName, tuning):
-  benchmark(dataName, tuning)
-  pass
-    
-if __name__ == '__main__':
-  main(sys.argv[1], int(sys.argv[2]))
