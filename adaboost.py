@@ -67,8 +67,8 @@ class Stump:
 class AdaBoost:
   learners: List[Stump]
   numFeatures: int = 0
-  DEFAULT_T = 10
-  MAX_EFFORT = 1e6
+  DEFAULT_T = 5
+  MAX_EFFORT = 1e5
 
   # The constructor
   def __init__(self):
@@ -101,7 +101,6 @@ class AdaBoost:
     # Each feature has a dictionary of values and each of these of values have a minusList and a plusList
     # minusList = list of positions 'pos' for which y[pos] = "-" (-1)
     # plusList = list of positions 'pos' for which y[pos] = "+" (+1)
-    n = len(X)
     for indexInData in range(n):
       x = X[indexInData]
       for indexInSample in range(self.numFeatures):
@@ -164,7 +163,7 @@ class AdaBoost:
         # For any other data type, keep it as it is now
         store[index] = sorted(store[index].items())
     # Return the modified data and the container
-    return X, z, store
+    return y, store
   
   # The fitter
   def fit(self, X, y) -> None:
@@ -173,7 +172,7 @@ class AdaBoost:
     weights = np.array([1.0 / n] * n)
 
     numFeatures = len(X[0])
-    X, y, store = self.preprocessing(X, y)
+    y, store = self.preprocessing(X, y)
 
     # Compute the initial weights of the "-" class
     totalMinusWeight = [(1.0 / n) * len(list(filter(lambda index: not y[index], range(n))))]

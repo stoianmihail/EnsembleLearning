@@ -59,37 +59,44 @@ class DataReader:
       os.remove(dataName + ".tsv.gz")
       return X, y
 
-def benchmark(dataName):
-  dataReader = DataReader()
-  X, y = dataReader.read(dataName)
-  train_X, test_X, train_y, test_y = train_test_split(X, y)
-
-  print("Train data: " + str(len(train_X)))
-  print("Test data: " + str(len(test_X)))
+class Benchmark:
+  def __init__(self, dataName):
+    dataReader = DataReader()
+    X, y = dataReader.read(dataName)
+    self.train_X, self.test_X, self.train_y, self.test_y = train_test_split(X, y)
+    print("Train data: " + str(len(self.train_X)))
+    print("Test data: " + str(len(self.test_X)))
     
-  if False:
-    adaBoost = AdaBoost()
-    logit = LogisticRegression()
-    gnb = GaussianNB()
-
-    adaBoost.fit(train_X, train_y)
-    logit.fit(train_X, train_y)
-    gnb.fit(train_X, train_y)
-
-    adaBoostScore = adaBoost.score(test_X, test_y)
-    logitScore = logit.score(test_X, test_y)
-    gnbScore = gnb.score(test_X, test_y)
-
-    print("adaBoost=" + str(adaBoostScore))
-    print("logic=" + str(logitScore))
-    print("gauss=" + str(gnbScore))
-  else:
-    decisionTree = DecisionTree()
-    decisionTree.fit(train_X, train_y)
-  pass
+  def run(self, classifierName):
+    if classifierName == "AdaBoost":
+      self.classifier = AdaBoost()
+    elif classifierName == "LogisticRegression":
+      self.classifier = LogisticRegression()
+    elif classifierName == "GaussianNB":
+      self.classifier = GaussianNB()
+    fitStart = time.time()
+    self.classifier.fit(self.train_X, self.train_y)
+    fitStop = time.time()
+    
+    scoreStart = time.time()
+    score = self.classifier.score(self.test_X, self.test_y)
+    scoreStop = time.time()
+    print(classifierName + ": accuracy=" + "{0:.3f}".format(score) + ", fit_time=" + "{0:.3f}".format(fitStop - fitStart) + ", score_time=" + "{0:.3f}".format(scoreStop - scoreStart))
+    
+  def runAll(self):
+    if True:
+      self.run("AdaBoost")
+      self.run("LogisticRegression")
+      self.run("GaussianNB")
+    else:
+      decisionTree = DecisionTree()
+      decisionTree.fit(train_X, train_y)
+      decisionTree.score(test_X, test_y)
+    pass
   
 def main(dataName):
-  benchmark(dataName)
+  benchmark = Benchmark(dataName)
+  benchmark.runAll()
   pass
     
 if __name__ == '__main__':
