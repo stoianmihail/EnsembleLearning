@@ -60,13 +60,10 @@ class DataReader:
       return X, y
 
 class Benchmark:
-  def __init__(self, dataName):
-    dataReader = DataReader(bool(1))
-    X, y = dataReader.read(dataName)
-    self.train_X, self.test_X, self.train_y, self.test_y = train_test_split(X, y)
-    print("Train data: " + str(len(self.train_X)))
-    print("Test data: " + str(len(self.test_X)))
-    
+  def __init__(self, classificationType):
+    self.classificationType = classificationType
+    pass
+  
   def run(self, classifierName):
     if classifierName == "AdaBoost":
       self.classifier = AdaBoost()
@@ -83,16 +80,40 @@ class Benchmark:
     scoreStart = time.time()
     score = self.classifier.score(self.test_X, self.test_y)
     scoreStop = time.time()
-    print(classifierName + ": accuracy=" + "{0:.3f}".format(score) + ", fit_time=" + "{0:.3f}".format(fitStop - fitStart) + ", score_time=" + "{0:.3f}".format(scoreStop - scoreStart))
+    toPrint = classifierName + ": accuracy=" + "{0:.3f}".format(score) + ", fit_time=" + "{0:.3f}".format(fitStop - fitStart) + ", score_time=" + "{0:.3f}".format(scoreStop - scoreStart)
+    print(toPrint)
+    self.maxLen = max(self.maxLen, len(toPrint))
+    pass
     
   def runAll(self):
-    self.run("AdaBoost")
-    self.run("DecisionTree")
-    self.run("LogisticRegression")
-    self.run("GaussianNB")
+    if self.classificationType == "binary_classification.txt":
+      with open("binary_classification.txt", "r") as file:
+        dataReader = DataReader()
+        for dataName in file:
+          # Read the data
+          X, y = dataReader.read(dataName.strip())
+          
+          # Split it into training data and testing data
+          self.train_X, self.test_X, self.train_y, self.test_y = train_test_split(X, y)
+          
+          self.maxLen = 0
+          print("Data: " + str(dataName.strip()))
+          print("Sizes: (train=" + str(len(self.train_X)) + ", test=" + str(len(self.test_X)) + ")")
+          
+          # And run the classifiers
+          self.run("AdaBoost")
+          self.run("DecisionTree")
+          self.run("LogisticRegression")
+          self.run("GaussianNB")
+          
+          # And separate
+          print("-" * self.maxLen)
+    elif classificationType == "test":
+      dataReader = DataReader(False)
+    pass
 
-def main(dataName):
-  benchmark = Benchmark(dataName)
+def main(classificationType):
+  benchmark = Benchmark(classificationType)
   benchmark.runAll()
   pass
     
