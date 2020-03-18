@@ -2,7 +2,6 @@ import os
 import sys
 import numpy as np
 import math
-import time
 
 # The dataclass type and its features
 from dataclasses import dataclass
@@ -214,13 +213,13 @@ class AdaBoost:
     pass
 
   # Receives a query and outputs the hypothesis
-  def query(self, sample):
+  def predict(self, sample):
     H = 0
     for learner in self.learners:
       H += learner.vote(sample)
     return int(H > 0)
   
-  # Compute test error
+  # Compute test accuracy
   def score(self, X, y) -> float:
     if len(X) != len(y):
       print("x-axis and y-axis of test data do not have the same size")
@@ -228,84 +227,83 @@ class AdaBoost:
     n = len(X)
     if not n:
       return 1
-    else:
-      # First define the binary class
-      shrinked = sorted(list(set(y)))
-      if len(shrinked) == 1:
-        print("Your test data is redundant. All samples fall into the same class")
-        return 1
-      elif len(shrinked) > 2:
-        print("AdaBoost can support by now only binary classification")
-        sys.exit(1)
-      
-      # Put the learners with the same feature into the same bucket
-      commonFeature = []
-      for feature in range(self.numFeatures):
-        commonFeature.append(list())
-      for learner in self.learners:
-        commonFeature[learner.feature].append(learner)
-      
-      # Take only those features, the buckets of which are not empty
-      mapFeature = []
-      for feature in range(self.numFeatures):
-        if commonFeature[feature]:
-          mapFeature.append(feature)
-          
-      # And get rid of those empty buckets
-      commonFeature = list(filter(lambda elem: elem, commonFeature))
-      
-      # We preprocess the sum votes from each classifier, by sorting the thresholds (which should be unique)
-      # The first sum 'sumGreaterOrEqualThanSample' sums up the votes of those classifiers, the thresholds of which
-      # are greater of equal than the value of the current sample
-      # The second sum, in the same way, but note that the construction differs
-      # In order to cover the case, in which a sample comes and its value is strictly greater than all thresholds
-      # of the respective feature (in which case the binary search will return as index the size of learners),
-      # we insert a sentinel at the end of 'votes' for each feature.
-      prepared = []
-      onlyThresholds = []
-      for index, bucketList in enumerate(commonFeature):
-        sortedBucketList = sorted(bucketList, key=lambda learner: learner.threshold)
+    # First define the binary class
+    shrinked = sorted(list(set(y)))
+    if len(shrinked) == 1:
+      print("Your test data is redundant. All samples fall into the same class")
+      return 1
+    elif len(shrinked) > 2:
+      print("AdaBoost can support by now only binary classification")
+      sys.exit(1)
+    
+    # Put the learners with the same feature into the same bucket
+    commonFeature = []
+    for feature in range(self.numFeatures):
+      commonFeature.append(list())
+    for learner in self.learners:
+      commonFeature[learner.feature].append(learner)
+    
+    # Take only those features, the buckets of which are not empty
+    mapFeature = []
+    for feature in range(self.numFeatures):
+      if commonFeature[feature]:
+        mapFeature.append(feature)
         
-        # Build up the partial sum 'sumGreaterOrEqualThanSample'
-        # Note that we start from the beginning, since all elements which are on our right have a greater or equal threshold
-        votes = []
-        sumGreaterOrEqualThanSample = 0
-        for ptr, learner in enumerate(sortedBucketList):
-          votes.append(sumGreaterOrEqualThanSample)
-          sumGreaterOrEqualThanSample += learner.alpha * learner.PERM[learner.side][int(False)]
-        # And add the sentinel: gather all votes, when the value of the sample is simply strictly greater than all thresholds of this feature
+    # And get rid of those empty buckets
+    commonFeature = list(filter(lambda elem: elem, commonFeature))
+    
+    # We preprocess the sum votes from each classifier, by sorting the thresholds (which should be unique)
+    # The first sum 'sumGreaterOrEqualThanSample' sums up the votes of those classifiers, the thresholds of which
+    # are greater of equal than the value of the current sample
+    # The second sum, in the same way, but note that the construction differs
+    # In order to cover the case, in which a sample comes and its value is strictly greater than all thresholds
+    # of the respective feature (in which case the binary search will return as index the size of learners),
+    # we insert a sentinel at the end of 'votes' for each feature.
+    prepared = []
+    onlyThresholds = []
+    for index, bucketList in enumerate(commonFeature):
+      sortedBucketList = sorted(bucketList, key=lambda learner: learner.threshold)
+      
+      # Build up the partial sum 'sumGreaterOrEqualThanSample'
+      # Note that we start from the beginning, since all elements which are on our right have a greater or equal threshold
+      votes = []
+      sumGreaterOrEqualThanSample = 0
+      for ptr, learner in enumerate(sortedBucketList):
         votes.append(sumGreaterOrEqualThanSample)
-       
-        # Build up the partial sum 'sumLowerThanSample'
-        # Note that we start from the end, since all elements which are on our left have a threshold strictly lower than the threshold of the current learner
-        sumLowerThanSample = 0
-        ptr = len(sortedBucketList)
-        while ptr != 0:
-          learner = sortedBucketList[ptr - 1]
-          sumLowerThanSample += learner.alpha * learner.PERM[learner.side][int(True)]
-          
-          # And add it to the already computed partial sum in 'votes'
-          votes[ptr - 1] += sumLowerThanSample
-          ptr -= 1
-        # Add the votes of this feature and keep only the thresholds from each learner
-        prepared.append(votes)
-        onlyThresholds.append(list(map(lambda learner: learner.threshold, sortedBucketList)))
+        sumGreaterOrEqualThanSample += learner.alpha * learner.PERM[learner.side][int(False)]
+      # And add the sentinel: gather all votes, when the value of the sample is simply strictly greater than all thresholds of this feature
+      votes.append(sumGreaterOrEqualThanSample)
         
-      # And compute the score
-      correctClassified = 0
-      for index in range(n):
-        # Note that 'shrinked' has already been sorted
-        expected = int(y[index] == shrinked[1])
+      # Build up the partial sum 'sumLowerThanSample'
+      # Note that we start from the end, since all elements which are on our left have a threshold strictly lower than the threshold of the current learner
+      sumLowerThanSample = 0
+      ptr = len(sortedBucketList)
+      while ptr != 0:
+        learner = sortedBucketList[ptr - 1]
+        sumLowerThanSample += learner.alpha * learner.PERM[learner.side][int(True)]
         
-        # This is an improved way to compute the prediction
-        # If for any reasons, you want to go the safe way,
-        # you can use the function 'self.query(X[index])', which computes it in the classical way
-        predicted = 0
-        for notNullFeature, votes in enumerate(prepared):
-          # Note that 'votes' has a sentinel at the end to capture the case where the value of sample is strictly greater than all thresholds of 'mapFeature[notNullFeature]'
-          pos = bisect_left(onlyThresholds[notNullFeature], X[index][mapFeature[notNullFeature]])
-          predicted += votes[pos]
-        predicted = int(predicted > 0)
-        correctClassified += int(expected == predicted)
-      accuracy = float(correctClassified / n)
-      return accuracy
+        # And add it to the already computed partial sum in 'votes'
+        votes[ptr - 1] += sumLowerThanSample
+        ptr -= 1
+      # Add the votes of this feature and keep only the thresholds from each learner
+      prepared.append(votes)
+      onlyThresholds.append(list(map(lambda learner: learner.threshold, sortedBucketList)))
+    
+    # And compute the score
+    correctClassified = 0
+    for index in range(n):
+      # Note that 'shrinked' has already been sorted
+      expected = int(y[index] == shrinked[1])
+      
+      # This is an improved way to compute the prediction
+      # If for any reasons, you want to go the safe way,
+      # you can use the function 'self.predict(X[index])', which computes it in the classical way
+      predicted = 0
+      for notNullFeature, votes in enumerate(prepared):
+        # Note that 'votes' has a sentinel at the end to capture the case where the value of sample is strictly greater than all thresholds of 'mapFeature[notNullFeature]'
+        pos = bisect_left(onlyThresholds[notNullFeature], X[index][mapFeature[notNullFeature]])
+        predicted += votes[pos]
+      predicted = int(predicted > 0)
+      correctClassified += int(expected == predicted)
+    accuracy = float(correctClassified / n)
+    return accuracy

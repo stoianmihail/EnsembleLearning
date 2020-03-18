@@ -61,7 +61,7 @@ class DataReader:
 
 class Benchmark:
   def __init__(self, dataName):
-    dataReader = DataReader()
+    dataReader = DataReader(bool(1))
     X, y = dataReader.read(dataName)
     self.train_X, self.test_X, self.train_y, self.test_y = train_test_split(X, y)
     print("Train data: " + str(len(self.train_X)))
@@ -70,6 +70,8 @@ class Benchmark:
   def run(self, classifierName):
     if classifierName == "AdaBoost":
       self.classifier = AdaBoost()
+    elif classifierName == "DecisionTree":
+      self.classifier = DecisionTree()
     elif classifierName == "LogisticRegression":
       self.classifier = LogisticRegression()
     elif classifierName == "GaussianNB":
@@ -84,16 +86,11 @@ class Benchmark:
     print(classifierName + ": accuracy=" + "{0:.3f}".format(score) + ", fit_time=" + "{0:.3f}".format(fitStop - fitStart) + ", score_time=" + "{0:.3f}".format(scoreStop - scoreStart))
     
   def runAll(self):
-    if True:
-      self.run("AdaBoost")
-      self.run("LogisticRegression")
-      self.run("GaussianNB")
-    else:
-      decisionTree = DecisionTree()
-      decisionTree.fit(train_X, train_y)
-      decisionTree.score(test_X, test_y)
-    pass
-  
+    self.run("AdaBoost")
+    self.run("DecisionTree")
+    self.run("LogisticRegression")
+    self.run("GaussianNB")
+
 def main(dataName):
   benchmark = Benchmark(dataName)
   benchmark.runAll()

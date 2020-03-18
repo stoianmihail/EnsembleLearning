@@ -7,56 +7,71 @@ import math
 from dataclasses import dataclass
 from typing import List
     
+# A node in the decision tree
 class Node:
   def __init__(self):
-    self.gain = 1
+    self.coefficient = 1
+    self.branches = None
     pass
   
+  # Print a pretty decision tree
   def custom(self, tab):
-    return self.to_string() + " branches=[" + ("]\n" if not list(filter(lambda branch: branch != None, self.branches)) else ("\n" + "".join("\t" * tab + (branch.custom(tab + 1) if branch != None else "None" + ("" if index == len(self.branches) - 1 else "\n")) for index, branch in enumerate(self.branches)) + ("\n" + "\t" * (tab - 1) + "]\n"))) if self != None else ""
+    return self.to_string() + " branches=[" + ("]\n" if not self.branches else "\n" + "".join("\t" * tab + branch.custom(tab + 1) for branch in self.branches) + ("\t" * (tab - 1) + "]\n"))
   
   def __repr__(self) -> str:
     return self.custom(1)
-  
+    
   def to_string(self) -> str:
-    return "Node: gain=" + str(self.gain) + " feature=" + str(self.feature) + " type=" + str(self.featureType) + " & values=" + (str(self.threshold) if self.featureType == "continous" else str(self.discreteMap))
+    return "Final node: result=" + str(self.result) if not self.branches else "Inner node: coefficient=" + str(self.coefficient) + " feature=" + str(self.feature) + " threshold=" + str(self.threshold)
   
-  def setParameters(self, gain, types, feature, thresholdOrDiscreteMap):
-    self.gain = gain
+  def setParameters(self, coefficient, feature, threshold):
+    self.coefficient = coefficient
     self.feature = feature
-    self.featureType = types[feature]
-    if self.featureType == "continous":
-      self.threshold = thresholdOrDiscreteMap
-    else:
-      self.discreteMap = thresholdOrDiscreteMap
+    self.threshold = threshold
     
   def setBranches(self, branches):
     self.branches = branches
   
-  def traverse(self, sample, acc = ""):
-    if self == None:
-      return acc
-    nextBranch = self.branches[int(sample[self.feature] <= self.threshold)] if self.featureType == "continous" else self.branches[self.discreteMap.get(sample[self.feature])]
-    acc += self.to_string()
-    if nextBranch == None:
-      return acc
-    return nextBranch.traverse(sample, acc + "\n")
+  # Actual computation of log(odds)
+  def computeLogOdds(self, negativeCount, positiveCount) -> float:
+    if not negativeCount:
+      return math.inf
+    elif not positiveCount:
+      return -math.inf
+    else:
+      return math.log(float(positiveCount) / (negativeCount + positiveCount))
+    
+  # Compute the probability from log(odds)
+  def computeProbability(self) -> float:
+    val =  1.0 / (1.0 + math.exp(-self.result))
+    return val
 
+  # Save the log(odds) of the list
+  def setResult(self, y, indexList) -> None:
+    if not indexList:
+      self.result = 0
+      pass
+    count = [0, 0]
+    for index in indexList:
+      count[y[index]] += 1
+    self.result = self.computeLogOdds(count[0], count[1])
+    pass
+
+  # Find the node the samplesfalls into
+  def traverse(self, sample):
+    if not self.branches:
+      return self
+    nextBranch = self.branches[int(sample[self.feature] > self.threshold)]
+    return nextBranch.traverse(sample)
+
+# The decision tree
 class DecisionTree:
-  def __init__(self):
+  def __init__(self, coefficientName = "gini"):
+    self.coefficientName = coefficientName
     pass
   
   def __repr__(self) -> str:
     return str(self.tree)
-  
-  def formula(self, x):
-    return -x * math.log(x, 2)
-  
-  def computeEntropy(self, x, y):
-    total = 1.0 / (x + y)
-    if not x or not y:
-      return 1
-    return self.formula(x * total) + self.formula(y * total)
   
   def preprocessing(self, X, y):
     # Shrink y and sort the values, since we assume that the lower value represents the minus class
@@ -65,31 +80,30 @@ class DecisionTree:
       print("Your training data is redundant. All samples fall into the same class")
       sys.exit(1)
     if len(shrinked) > 2:
-      print("AdaBoost can support by now only binary classification")
+      print("Decision tree can support by now only binary classification")
       sys.exit(1)
     
     # Translate y into binary classes (-1, 1)
     z = []
     for index in range(self.size):
       z.append(int(y[index] == shrinked[1]))
+    y = z
   
     # Build up the container
     self.store = []
-    self.mapValue = []
     for index in range(self.numFeatures):
       self.store.append(dict())
-      self.mapValue.append(dict())
       
+    # Each feature has a dictionary of values and each of these of values have a minusList and a plusList
+    # minusList = list of positions 'pos' for which y[pos] = "-" (-1)
+    # plusList = list of positions 'pos' for which y[pos] = "+" (+1)
     for indexInData in range(self.size):
       x = X[indexInData]
       for feature in range(self.numFeatures):
-        self.store[feature][x[feature]] = True
-        
-    for feature in range(self.numFeatures):
-      tmp = sorted(list(self.store[feature].keys()))
-      for index, value in enumerate(tmp):
-        self.mapValue[feature][value] = index
-      self.store[feature] = tmp
+        if not (x[feature] in self.store[feature]):
+          self.store[feature][x[feature]] = [[indexInData], []] if not y[indexInData] else [[], [indexInData]]
+        else:
+          self.store[feature][x[feature]][y[indexInData]].append(indexInData)
       
     # Identify which type of variables we are dealing with
     self.types = []
@@ -105,73 +119,128 @@ class DecisionTree:
         self.types.append("binary")
       else:
         self.types.append("discrete")
-
-    print("Data types:")
-    for index, type_ in enumerate(self.types):
-      print(str(index) + " -> " + str(type_) + " values: " + str(self.store[index]))
-    return z
-  
-  def process(self, X, y, indexList, featureList) -> Node:
-    if len(indexList) < 20:
-      return None
-    currNode = Node()
-    # print("Now with range=" + str(indexList))
-    # print("featureList: " + str(featureList))
-    for feature in featureList:
-      # We differentiate between continous and non-continous variables
-      # Why? Because in the case of a continous one, we should choose the best threshold
-      # print("try feature: " + str(feature))
-      if self.types[feature] == "continous":
-        for continousValue in self.store[feature]:
-          count = np.array([[0, 0], [0, 0]])
-          for index in indexList:
-            count[int(X[index][feature] <= continousValue)][y[index]] += 1
-          totalCount = 1.0 / count.sum()
-          entropySum = totalCount * (count[0].sum() * self.computeEntropy(count[0][0], count[0][1]) + count[1].sum() * self.computeEntropy(count[1][0], count[1][1]))
-          if entropySum < currNode.gain:
-            currNode.setParameters(entropySum, self.types, feature, threshold)
-      else:
-        totalCount = 0
-        entropySum = 0
-        for discreteValue in self.store[feature]:
-          count = [0, 0]
-          for index in indexList:
-            if X[index][feature] == discreteValue:
-              count[y[index]] += 1
-          totalCount += count[0] + count[1]
-          entropySum += self.computeEntropy(count[0], count[1])
-        entropySum /= totalCount
-        if entropySum < currNode.gain:
-          currNode.setParameters(entropySum, self.types, feature, self.mapValue[feature])
-    if self.types[currNode.feature] == "continous":
-      indexes = [[], []]
-      for index in indexList:
-        indexes[int(X[index][currNode.feature] <= currNode.threshold)].append(index)
-      branches = [self.process(X, y, indexes[0], featureList), self.process(X, y, indexes[1], featureList)]
-      currNode.setBranches(branches)
-    else:
-      nextFeatureList = list(filter(lambda feature: feature != currNode.feature, featureList))
-      span = len(self.store[currNode.feature])
-      indexes = []
-      for i in range(span):
-        indexes.append(list())
-      for index in indexList:
-        indexes[self.mapValue[currNode.feature][X[index][currNode.feature]]].append(index)
-      branches = []
-      for pos in range(span):
-        branches.append(self.process(X, y, indexes[pos], nextFeatureList))
-      currNode.setBranches(branches)
-    return currNode
     
+    # Compress the list of possible values for discrete/continous features
+    for feature in range(self.numFeatures):
+      if self.types[feature] != "binary":
+        tmp = sorted(self.store[feature].items())
+        size = len(tmp)
+        save = []
+        for ptr, (value, [minusList, plusList]) in enumerate(tmp):
+          if ptr == size - 1:
+            save.append(value + 1)
+          else:
+            nextValue = tmp[ptr + 1][0]
+            nextMinusList = tmp[ptr + 1][1][0]
+            nextPlusList = tmp[ptr + 1][1][1]
+            if not ((not minusList and not nextMinusList) or (not plusList and not nextPlusList)):
+              save.append((value + nextValue) / 2)
+        self.store[feature] = save
+      else:
+        self.store[feature] = sorted(self.store[feature].keys())
+    return y
+  
+  # The information entropy
+  def f(self, x):
+    if not x:
+      return 0
+    return -x * math.log(x, 2)
+
+  # Compute the entropy of the current split, which has generated the 2x2 matrix 'counts'
+  def computeEntropy(self, counts):
+    rev = 1.0 / counts.sum()
+    alfa = counts[0][0]
+    beta = counts[0][1]
+    gamma = counts[1][0]
+    delta = counts[1][1]
+    return rev * (self.f(alfa) + self.f(beta) + self.f(gamma) + self.f(delta) - self.f(alfa + beta) - self.f(gamma + delta))
+  
+  # Compute the Gini index of the current split, which has generated the 2x2 matrix 'counts'
+  def computeGiniIndex(self, counts):
+    rev = 1.0 / counts.sum()
+    alfa = counts[0][0]
+    beta = counts[0][1]
+    gamma = counts[1][0]
+    delta = counts[1][1]
+    return 1 - rev * ((alfa**2 + beta**2) / (alfa + beta) + (gamma**2 + delta**2) / (gamma + delta))
+  
+  # Compute the coefficient (either Gini index or the information entropy)
+  def computeCoefficient(self, counts):
+    return self.computeGiniIndex(counts) if self.coefficientName == "gini" else self.computeEntropy(counts)
+  
+  # Build up the tree
+  def process(self, X, y, indexList, featureList) -> Node:
+    currNode = Node()
+    
+    # Can we stop?
+    if len(indexList) <= self.nodeSize:
+      currNode.setResult(y, indexList)
+      return currNode
+    
+    # Iterate through all features and take the smallest coefficent of the split
+    for feature in featureList:
+      for value in self.store[feature]:
+        counts = np.array([[0, 0], [0, 0]])
+        for index in indexList:
+          counts[int(X[index][feature] > value)][y[index]] += 1
+        # Is this split destructive?
+        if not counts[0].sum() or not counts[1].sum():
+          continue
+        # And compute the coefficent
+        coefficient = self.computeCoefficient(counts)
+        if coefficient < currNode.coefficient:
+          currNode.setParameters(coefficient, feature, value)
+    # No good split?
+    if currNode.coefficient == 1:
+      currNode.setResult(y, indexList)
+      return currNode
+    
+    # Split up the list of indexes
+    indexes = [[], []]
+    for index in indexList:
+      indexes[int(X[index][currNode.feature] > currNode.threshold)].append(index)
+    
+    # And recursively build up the branches
+    # If the current split was done upon a binary feature, we eliminate for the upcoming branches
+    newFeatureList = list(filter(lambda feature: feature != currNode.feature, featureList)) if self.types[currNode.feature] == "binary" else featureList
+    currNode.setBranches([self.process(X, y, indexes[0], newFeatureList), self.process(X, y, indexes[1], newFeatureList)])
+    return currNode
+  
+  # The fitter
   def fit(self, X, y) -> None:
     self.size = len(X)
+    self.nodeSize = math.log(self.size, 2)
     self.numFeatures = len(X[0])
     y = self.preprocessing(X, y)
     self.tree = self.process(X, y, range(self.size), range(self.numFeatures))
-    print(self)
-  
+    
+  # The predictor 
   def predict(self, sample):
-    return "sample: " + str(sample) + " got:\n" + self.tree.traverse(sample)
+    result = self.tree.traverse(sample)
+    return int(result.computeProbability() > 0.5)
    
+  # Compute the accuracy
   def score(self, X, y):
-    print(self.predict(X[0]))
+    if len(X) != len(y):
+      print("x-axis and y-axis of test data do not have the same size")
+      sys.exit(1)
+    n = len(X)
+    if not n:
+      return 1
+    # First define the binary class
+    shrinked = sorted(list(set(y)))
+    if len(shrinked) == 1:
+      print("Your test data is redundant. All samples fall into the same class")
+      return 1
+    elif len(shrinked) > 2:
+      print("Decision trees can support by now only binary classification")
+      sys.exit(1)
+     
+    # And compute the score
+    correctPredicted = 0
+    n = len(X)
+    for index in range(n):
+      expected = int(y[index] == shrinked[1])
+      predicted = self.predict(X[index])
+      correctPredicted += int(predicted == expected)
+    return float(correctPredicted / n)
