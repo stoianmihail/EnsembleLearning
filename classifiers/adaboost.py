@@ -1,4 +1,4 @@
-import baseline
+from classifiers.baseline import Classifier
 import numpy
 import math
 
@@ -13,7 +13,7 @@ from bisect import bisect_left
 # A performant implementation with auto-tuning of AdaBoost ensemble learning algorithm
 ####
 
-class AdaBoost(baseline.Classifier):
+class AdaBoost(Classifier):
   # The constructor
   def __init__(self):
     self.DEFAULT_NUM_LEARNERS = 5

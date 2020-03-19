@@ -8,8 +8,10 @@ import time
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import GaussianNB
 from sklearn.model_selection import train_test_split
-from adaboost import AdaBoost
-from decisiontree import DecisionTree
+from classifiers.baseline import Classifier
+from classifiers.adaboost import AdaBoost
+from classifiers.decisiontree import DecisionTree
+from classifiers.randomforest import RandomForest
 
 # The Benchmark
 from pmlb import fetch_data
@@ -64,13 +66,25 @@ class Benchmark:
     self.classificationType = classificationType
     pass
   
+  class FeaturePrinter(Classifier):
+    def fit(self, X, y):
+      self.preprocessing(X, y)
+      print(self.types)
+      pass
+
   def run(self, classifierName):
+    if classifierName == "FeaturePrinter":
+      self.classifier = self.FeaturePrinter()
+      self.classifier.fit(self.train_X, self.train_y)
+      return
     if classifierName == "AdaBoost":
       self.classifier = AdaBoost()
     elif classifierName == "DecisionTree":
       self.classifier = DecisionTree()
+    elif classifierName == "RandomForest":
+      self.classifier = RandomForest()
     elif classifierName == "LogisticRegression":
-      self.classifier = LogisticRegression()
+      self.classifier = LogisticRegression(max_iter=10000)
     elif classifierName == "GaussianNB":
       self.classifier = GaussianNB()
     fitStart = time.time()
@@ -91,25 +105,37 @@ class Benchmark:
         dataReader = DataReader()
         for dataName in file:
           # Read the data
-          X, y = dataReader.read(dataName.strip())
+          dataName = dataName.strip()
+          X, y = dataReader.read(dataName)
           
           # Split it into training data and testing data
           self.train_X, self.test_X, self.train_y, self.test_y = train_test_split(X, y)
           
           self.maxLen = 0
-          print("Data: " + str(dataName.strip()))
+          print("Data: " + str(dataName))
           print("Sizes: (train=" + str(len(self.train_X)) + ", test=" + str(len(self.test_X)) + ")")
-          
+         
           # And run the classifiers
+          self.run("FeaturePrinter")
           self.run("AdaBoost")
           self.run("DecisionTree")
+          if dataName != "diabetes":
+            self.run("RandomForest")
           self.run("LogisticRegression")
           self.run("GaussianNB")
-          
+        
           # And separate
           print("-" * self.maxLen)
-    elif classificationType == "test":
+    elif self.classificationType == "test":
       dataReader = DataReader(False)
+      X, y = dataReader.read("google_dataset.csv")
+      self.train_X, self.test_X, self.train_y, self.test_y = train_test_split(X, y)
+      for index, sample in enumerate(self.train_X):
+        print(str(index) + " : " + str(sample) + " -> " + str(self.train_y[index]))
+      for index, sample in enumerate(self.test_X):
+        print(str(sample) + " -> " + str(self.test_y[index]))
+      self.maxLen = 0
+      self.run("RandomForest")
     pass
 
 def main(classificationType):

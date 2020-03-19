@@ -1,11 +1,11 @@
-import baseline
+from classifiers.baseline import Classifier
 import numpy
 import math
-    
+import random    
+
 # The decision tree
-class DecisionTree(baseline.Classifier):  
+class DecisionTree(Classifier):  
   def __init__(self, coefficientName = "gini"):
-    self.classifierName = "Decision Tree"
     self.coefficientName = coefficientName
     pass
   
@@ -30,7 +30,7 @@ class DecisionTree(baseline.Classifier):
       return self.custom(1)
         
     def to_string(self) -> str:
-      return "Final node: result=" + str(self.result) if not self.branches else "Inner node: coefficient=" + str(self.coefficient) + " feature=" + str(self.feature) + " threshold=" + str(self.threshold)
+      return "Final node: count=" + str(self.count) if not self.branches else "Inner node: coefficient=" + str(self.coefficient) + " feature=" + str(self.feature) + " threshold=" + str(self.threshold)
     
     def setParameters(self, coefficient, feature, threshold):
       self.coefficient = coefficient
@@ -40,37 +40,26 @@ class DecisionTree(baseline.Classifier):
     def setBranches(self, branches):
       self.branches = branches
   
-    # Actual computation of log(odds)
-    def computeLogOdds(self, negativeCount, positiveCount) -> float:
-      if not negativeCount:
-        return math.inf
-      elif not positiveCount:
-        return -math.inf
-      else:
-        return math.log(float(positiveCount) / (negativeCount + positiveCount))
-        
-    # Compute the probability from log(odds)
-    def computeProbability(self) -> float:
-        val =  1.0 / (1.0 + math.exp(-self.result))
-        return val
-
     # Save the log(odds) of the list
     def setResult(self, y, indexList) -> None:
-      if not indexList:
-        self.result = 0
-        pass
-      count = [0, 0]
+      self.count = [0, 0]
       for index in indexList:
-        count[y[index]] += 1
-      self.result = self.computeLogOdds(count[0], count[1])
-      pass
+        self.count[y[index]] += 1
 
-    # Find the node the samplesfalls into
+    def computeProbability(self):
+      if not self.count[0]:
+        return 1
+      elif not self.count[1]:
+        return 0
+      return self.count[1] / (self.count[0] + self.count[1])
+
+    # Find the node the samples falls into
     def traverse(self, sample):
       if not self.branches:
         return self
       nextBranch = self.branches[int(sample[self.feature] > self.threshold)]
       return nextBranch.traverse(sample)
+  
   ####
   # End of the node in the decision tree
   #### 
@@ -104,15 +93,17 @@ class DecisionTree(baseline.Classifier):
     return self.computeGiniIndex(counts) if self.coefficientName == "gini" else self.computeEntropy(counts)
   
   # Build up the tree
-  def process(self, X, y, indexList, featureList) -> Node:
+  def process(self, X, y, indexList, featureList, randomSize) -> Node:
     currNode = self.Node()
     
     # Can we stop?
-    if len(indexList) <= self.nodeSize:
+    if (not len(featureList)) or (len(indexList) <= self.nodeSize):
       currNode.setResult(y, indexList)
       return currNode
     
     # Iterate through all features and take the smallest coefficent of the split
+    if randomSize != 0 and randomSize < len(featureList):
+      featureList = random.sample(featureList, randomSize) 
     for feature in featureList:
       for value in self.store[feature]:
         counts = numpy.array([[0, 0], [0, 0]])
@@ -138,22 +129,28 @@ class DecisionTree(baseline.Classifier):
     # And recursively build up the branches
     # If the current split was done upon a binary feature, we eliminate for the upcoming branches
     newFeatureList = list(filter(lambda feature: feature != currNode.feature, featureList)) if self.types[currNode.feature] == "binary" else featureList
-    currNode.setBranches([self.process(X, y, indexes[0], newFeatureList), self.process(X, y, indexes[1], newFeatureList)])
+    currNode.setBranches([self.process(X, y, indexes[0], newFeatureList, randomSize), self.process(X, y, indexes[1], newFeatureList, randomSize)])
     return currNode
   
   # The fitter
-  def fit(self, X, y) -> None:
-    self.size = len(X)
+  def fit(self, X, y, randomSize = 0, types = None, store = None) -> None:
+    if not randomSize:
+      y = self.preprocessing(X, y)
+    else:
+      self.size = len(X)
+      self.numFeatures = len(X[0])
+      self.types = types
+      self.store = store
     self.nodeSize = math.log(self.size, 2)
-    self.numFeatures = len(X[0])
-    y = self.preprocessing(X, y)
-    self.tree = self.process(X, y, range(self.size), range(self.numFeatures))
-    
-  # The predictor 
-  def predict(self, sample):
-    result = self.tree.traverse(sample)
-    return int(result.computeProbability() > 0.5)
+    self.tree = self.process(X, y, range(self.size), range(self.numFeatures), randomSize)
    
+  # The predictor 
+  def predict(self, sample, raw = False):
+    result = self.tree.traverse(sample)
+    if raw:
+      return result.computeProbability()
+    return int(result.computeProbability() > 0.5)
+  
   # Compute the accuracy
   def score(self, X, y):
     # Check the test data
@@ -161,9 +158,8 @@ class DecisionTree(baseline.Classifier):
     
     # And compute the score
     correctPredicted = 0
-    n = len(X)
-    for index in range(n):
+    for index, sample in enumerate(X):
       expected = int(y[index] == self.shrinked[1])
-      predicted = self.predict(X[index])
+      predicted = self.predict(sample)
       correctPredicted += int(predicted == expected)
-    return float(correctPredicted / n)
+    return float(correctPredicted / len(X))

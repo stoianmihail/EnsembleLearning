@@ -1,3 +1,5 @@
+import sys
+
 # Baseline for each classifier we are going to implement
 class Classifier:
   def __init__(self,):
@@ -8,11 +10,11 @@ class Classifier:
   
   def preprocessing(self, X, y, storeType = "withoutLists"):
     # Shrink y and sort the values, since we assume that the lower value represents the minus class
-    shrinked = sorted(list(set(y)))
-    if len(shrinked) == 1:
+    self.shrinked = sorted(list(set(y)))
+    if len(self.shrinked) == 1:
       print("Your training data is redundant. All samples fall into the same class")
       sys.exit(1)
-    if len(shrinked) > 2:
+    if len(self.shrinked) > 2:
       print("We can support by now only binary classification")
       sys.exit(1)
     
@@ -22,7 +24,7 @@ class Classifier:
     # Translate y into binary classes (-1, 1)
     z = []
     for indexInData in range(self.size):
-      z.append(int(y[indexInData] == shrinked[1]))
+      z.append(int(y[indexInData] == self.shrinked[1]))
     y = z
   
     # Build up the container
