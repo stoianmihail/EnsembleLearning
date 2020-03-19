@@ -12,6 +12,7 @@ from classifiers.baseline import Classifier
 from classifiers.adaboost import AdaBoost
 from classifiers.decisiontree import DecisionTree
 from classifiers.randomforest import RandomForest
+from classifiers.gradientboost import GradientBoost
 
 # The Benchmark
 from pmlb import fetch_data
@@ -79,6 +80,8 @@ class Benchmark:
       return
     if classifierName == "AdaBoost":
       self.classifier = AdaBoost()
+    elif classifierName == "GradientBoost":
+      self.classifier = GradientBoost()
     elif classifierName == "DecisionTree":
       self.classifier = DecisionTree()
     elif classifierName == "RandomForest":
@@ -94,7 +97,7 @@ class Benchmark:
     scoreStart = time.time()
     score = self.classifier.score(self.test_X, self.test_y)
     scoreStop = time.time()
-    toPrint = classifierName + ": accuracy=" + "{0:.3f}".format(score) + ", fit_time=" + "{0:.3f}".format(fitStop - fitStart) + ", score_time=" + "{0:.3f}".format(scoreStop - scoreStart)
+    toPrint = classifierName + ": accuracy=" + "{0:.2f}".format(score * 100) + "%, fit_time=" + "{0:.3f}".format(fitStop - fitStart) + ", score_time=" + "{0:.3f}".format(scoreStop - scoreStart)
     print(toPrint)
     self.maxLen = max(self.maxLen, len(toPrint))
     pass
@@ -119,8 +122,8 @@ class Benchmark:
           self.run("FeaturePrinter")
           self.run("AdaBoost")
           self.run("DecisionTree")
-          if dataName != "diabetes":
-            self.run("RandomForest")
+          self.run("GradientBoost")
+          self.run("RandomForest")
           self.run("LogisticRegression")
           self.run("GaussianNB")
         
@@ -135,7 +138,7 @@ class Benchmark:
       for index, sample in enumerate(self.test_X):
         print(str(sample) + " -> " + str(self.test_y[index]))
       self.maxLen = 0
-      self.run("RandomForest")
+      self.run("GradientBoost")
     pass
 
 def main(classificationType):

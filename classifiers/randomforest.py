@@ -10,13 +10,16 @@ class RandomForest(Classifier):
   def __init__(self):
     self.maxNumTrees = 50
     pass
-    
-  def __repr__(self):
-    pass
   
+  class RandomDecisionTree(DecisionTree):
+    # The predictor 
+    def predict(self, sample):
+      result = self.tree.traverse(sample)
+      return result.computeProbability()
+    
   # Fit the current decision tree
   def fitDT(self, X, y, indexList, randomSize):
-    tree = DecisionTree()
+    tree = self.RandomDecisionTree()
     newX = []
     newY = []
     for index in indexList:
@@ -41,10 +44,10 @@ class RandomForest(Classifier):
     pass
   
   # Predict by adding up the probabilities of each leaf node in which samples falls into
-  def predict(self, sample, expected, verbose = True):
+  def predict(self, sample):
     vote = 0
     for tree in self.trees:
-      vote += tree.predict(sample, raw=True)
+      vote += tree.predict(sample)
     vote /= self.maxNumTrees
     return int(vote > 0.5)
     
@@ -56,5 +59,5 @@ class RandomForest(Classifier):
     correctPredicted = 0
     for index, sample in enumerate(X):
       expected = int(y[index] == self.shrinked[1])
-      correctPredicted += int(self.predict(sample, expected, verbose=True) == expected)
+      correctPredicted += int(self.predict(sample) == expected)
     return float(correctPredicted / len(X))

@@ -5,8 +5,10 @@ import random
 
 # The decision tree
 class DecisionTree(Classifier):  
-  def __init__(self, coefficientName = "gini"):
+  def __init__(self, coefficientName = "gini", maxDepth = -1, master = None):
     self.coefficientName = coefficientName
+    self.maxDepth = maxDepth
+    self.master = master
     pass
   
   def __repr__(self) -> str:
@@ -30,7 +32,7 @@ class DecisionTree(Classifier):
       return self.custom(1)
         
     def to_string(self) -> str:
-      return "Final node: count=" + str(self.count) if not self.branches else "Inner node: coefficient=" + str(self.coefficient) + " feature=" + str(self.feature) + " threshold=" + str(self.threshold)
+        return "Final node: count/agg=" + str(self.count) if not self.branches else "Inner node: coefficient=" + str(self.coefficient) + " feature=" + str(self.feature) + " threshold=" + str(self.threshold)
     
     def setParameters(self, coefficient, feature, threshold):
       self.coefficient = coefficient
@@ -41,11 +43,29 @@ class DecisionTree(Classifier):
       self.branches = branches
   
     # Save the log(odds) of the list
-    def setResult(self, y, indexList) -> None:
-      self.count = [0, 0]
-      for index in indexList:
-        self.count[y[index]] += 1
-
+    def setResult(self, y, indexList, master = None) -> None:
+      # In case we only compute the probability
+      if not master:
+        self.count = [0, 0]
+        for index in indexList:
+          self.count[y[index]] += 1
+      else:
+        # In case we use Gradient Boost:
+        # We received a master, which contains the list of probabilites
+        # At this step, we compute the output of the current leaf node
+        # Moreover, we update the probabilites, based on the previous sum of odds and the current one
+        self.count = 0
+        residualSum = 0
+        probabilitySum = 0
+        for index in indexList:
+          residualSum += y[index] - master.probabilites[index][1]
+          probabilitySum += master.probabilites[index][1] * (1 - master.probabilites[index][1])
+        self.count = residualSum / probabilitySum
+        for index in indexList:
+          newOdds = master.probabilites[index][0] + master.learningRate * self.count
+          master.probabilites[index][1] = 1.0 / (1 + math.exp(-newOdds))
+        
+    # Compute the probability of this node
     def computeProbability(self):
       if not self.count[0]:
         return 1
@@ -93,17 +113,21 @@ class DecisionTree(Classifier):
     return self.computeGiniIndex(counts) if self.coefficientName == "gini" else self.computeEntropy(counts)
   
   # Build up the tree
-  def process(self, X, y, indexList, featureList, randomSize) -> Node:
+  def process(self, X, y, indexList, featureList, currentDepth) -> Node:
     currNode = self.Node()
     
     # Can we stop?
     if (not len(featureList)) or (len(indexList) <= self.nodeSize):
-      currNode.setResult(y, indexList)
+      currNode.setResult(y, indexList, self.master)
+      return currNode
+    # Are we limited by a maximum depth?
+    if (self.maxDepth != -1) and (currentDepth > self.maxDepth):
+      currNode.setResult(y, indexList, self.master)
       return currNode
     
     # Iterate through all features and take the smallest coefficent of the split
-    if randomSize != 0 and randomSize < len(featureList):
-      featureList = random.sample(featureList, randomSize) 
+    if self.randomSize != 0 and self.randomSize < len(featureList):
+      featureList = random.sample(featureList, self.randomSize) 
     for feature in featureList:
       for value in self.store[feature]:
         counts = numpy.array([[0, 0], [0, 0]])
@@ -116,9 +140,9 @@ class DecisionTree(Classifier):
         coefficient = self.computeCoefficient(counts)
         if coefficient < currNode.coefficient:
           currNode.setParameters(coefficient, feature, value)
-    # No good split?
+    # No good split found?
     if currNode.coefficient == 1:
-      currNode.setResult(y, indexList)
+      currNode.setResult(y, indexList, self.master)
       return currNode
     
     # Split up the list of indexes
@@ -129,11 +153,12 @@ class DecisionTree(Classifier):
     # And recursively build up the branches
     # If the current split was done upon a binary feature, we eliminate for the upcoming branches
     newFeatureList = list(filter(lambda feature: feature != currNode.feature, featureList)) if self.types[currNode.feature] == "binary" else featureList
-    currNode.setBranches([self.process(X, y, indexes[0], newFeatureList, randomSize), self.process(X, y, indexes[1], newFeatureList, randomSize)])
+    currNode.setBranches([self.process(X, y, indexes[0], newFeatureList, currentDepth + 1), self.process(X, y, indexes[1], newFeatureList, currentDepth + 1)])
     return currNode
   
   # The fitter
   def fit(self, X, y, randomSize = 0, types = None, store = None) -> None:
+    self.randomSize = randomSize
     if not randomSize:
       y = self.preprocessing(X, y)
     else:
@@ -142,13 +167,11 @@ class DecisionTree(Classifier):
       self.types = types
       self.store = store
     self.nodeSize = math.log(self.size, 2)
-    self.tree = self.process(X, y, range(self.size), range(self.numFeatures), randomSize)
+    self.tree = self.process(X, y, range(self.size), range(self.numFeatures), 0)
    
   # The predictor 
-  def predict(self, sample, raw = False):
+  def predict(self, sample):
     result = self.tree.traverse(sample)
-    if raw:
-      return result.computeProbability()
     return int(result.computeProbability() > 0.5)
   
   # Compute the accuracy

@@ -3,5 +3,4 @@ monk2
 monk3
 tic-tac-toe
 titanic
-diabetes
 cleve
