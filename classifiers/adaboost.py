@@ -15,7 +15,8 @@ from bisect import bisect_left
 
 class AdaBoost(Classifier):
   # The constructor
-  def __init__(self):
+  def __init__(self, iterations = 0):
+    self.MAX_T = iterations
     self.DEFAULT_NUM_LEARNERS = 5
     self.MAX_EFFORT = 1e5
     pass
@@ -47,7 +48,12 @@ class AdaBoost(Classifier):
     # Compute alpha which reduces the error bound of the total error
     def computeAlpha(self) -> None:
       if not (self.error in [0, 1]):
+        print(self.alpha)
         self.alpha = 0.5 * math.log((1 - self.error) / self.error)
+      elif not self.error:
+        self.alpha = math.inf
+      else:
+        self.alpha = -math.inf
       
     # Return the prediction of this stump
     def predict(self, sample) -> int:
@@ -87,13 +93,16 @@ class AdaBoost(Classifier):
     totalMinusWeight = [(1.0 / self.size) * len(list(filter(lambda index: not y[index], range(self.size))))]
       
     # Compute the number of rounds to run
-    T = self.DEFAULT_NUM_LEARNERS
-    if self.size < self.MAX_EFFORT:
-      T = int(self.MAX_EFFORT / self.size)
+    T = self.MAX_T
+    if not T:
+      T = self.DEFAULT_NUM_LEARNERS
+      if self.size < self.MAX_EFFORT:
+        T = int(self.MAX_EFFORT / self.size)
       
     # And compute
     self.learners = []
     for iteration in range(T):
+      print("now: " + str(iteration))
       learner = self.Stump()
       for feature in range(self.numFeatures):
         # Note that the last iteration is in vain
@@ -130,15 +139,19 @@ class AdaBoost(Classifier):
     return int(H > 0)
   
   # Compute test accuracy
-  def score(self, X, y) -> float:
+  def score(self, X, y, size = -1) -> float:
     # Check the test data
     self.checkTestData(X, y)
+    
+    tmp = self.learners
+    if size != -1:
+      tmp = self.learners[:size]
     
     # Put the learners with the same feature into the same bucket
     commonFeature = []
     for feature in range(self.numFeatures):
       commonFeature.append(list())
-    for learner in self.learners:
+    for learner in tmp:
       commonFeature[learner.feature].append(learner)
     
     # Take only those features, the buckets of which are not empty

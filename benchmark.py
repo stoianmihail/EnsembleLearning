@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 from classifiers.baseline import Classifier
 from classifiers.adaboost import AdaBoost
 from classifiers.decisiontree import DecisionTree
-from classifiers.randomforest import RandomForest
+from classifiers.randomforest import RandomForests
 from classifiers.gradientboost import GradientBoost
 
 # The Benchmark
@@ -72,6 +72,51 @@ class Benchmark:
       self.preprocessing(X, y)
       print(self.types)
       pass
+    
+  def measureOverfitting(self, classifierName):
+    if classifierName == "RandomForests":
+      self.iterations = 200
+      self.classifier = RandomForests(self.iterations)
+      self.classifier.fit(self.train_X, self.train_y)
+        
+      print("done fitting")
+        
+      trainingScores = self.classifier.checkFitting(self.train_X, self.train_y)
+      testScores = self.classifier.checkFitting(self.test_X, self.test_y)
+      output = open("big_debug_rf.txt", "w")
+      for index, scoreList in enumerate(trainingScores):
+        for ptr, score in enumerate(scoreList):
+          output.write(str(index + 1) + ":" + str(ptr + 1) + ":" + str(score) + "," + str(testScores[index][ptr]) + "\n")
+      output.close()
+
+  def computeConfusionMatrix(self):
+    confusionMatrix = np.array([[0., 0.], [0., 0.]])
+    for index, sample in enumerate(self.test_X):
+      predicted = self.classifier.predict(sample)
+      confusionMatrix[predicted][int(self.test_y[index] == self.classifier.shrinked[1])] += 1
+    return confusionMatrix
+
+  def measureROC(self, classifierName):
+    if classifierName == "RandomForests":
+      size = len(self.train_X[0])
+      self.classifier = RandomForests()
+      self.classifier.fit(self.train_X, self.train_y)
+      
+      xs = []
+      ys = []
+      output = open("debug_roc.txt", "w")
+      for (randomSize, confusionMatrix) in self.classifier.matrices:
+        sensitivity = confusionMatrix[0][0] / (confusionMatrix[0][0] + confusionMatrix[1][0])
+        specificity = confusionMatrix[1][1] / (confusionMatrix[1][1] + confusionMatrix[0][1]) 
+        
+        xs.append(1 - specificity)
+        ys.append(sensitivity)
+        print(str(randomSize) + " -> " + str(1 - specificity) + "," + str(sensitivity)) 
+        output.write(str(randomSize) + ":" + str(1 - specificity) + "," + str(sensitivity) + "\n")
+      print(xs)
+      print(ys)
+      output.close()
+    pass
 
   def run(self, classifierName):
     if classifierName == "FeaturePrinter":
@@ -84,8 +129,8 @@ class Benchmark:
       self.classifier = GradientBoost()
     elif classifierName == "DecisionTree":
       self.classifier = DecisionTree()
-    elif classifierName == "RandomForest":
-      self.classifier = RandomForest()
+    elif classifierName == "RandomForests":
+      self.classifier = RandomForests()
     elif classifierName == "LogisticRegression":
       self.classifier = LogisticRegression(max_iter=10000)
     elif classifierName == "GaussianNB":
@@ -123,12 +168,40 @@ class Benchmark:
           self.run("AdaBoost")
           self.run("DecisionTree")
           self.run("GradientBoost")
-          self.run("RandomForest")
+          self.run("RandomForests")
           self.run("LogisticRegression")
           self.run("GaussianNB")
         
           # And separate
           print("-" * self.maxLen)
+    elif self.classificationType == "test_roc.txt":
+      with open("test_roc.txt", "r") as file:
+        dataReader = DataReader()
+        for dataName in file:
+          # Read the data
+          dataName = dataName.strip()
+          X, y = dataReader.read(dataName)
+          
+          # Split it into training data and testing data
+          self.train_X, self.test_X, self.train_y, self.test_y = train_test_split(X, y)
+          print("Data: " + str(dataName))
+          print("Sizes: (train=" + str(len(self.train_X)) + ", test=" + str(len(self.test_X)) + ")")
+  
+          self.measureROC("RandomForests")
+    elif self.classificationType == "test_overfitting.txt":
+      with open("test_overfitting.txt", "r") as file:
+        dataReader = DataReader()
+        for dataName in file:
+          # Read the data
+          dataName = dataName.strip()
+          X, y = dataReader.read(dataName)
+          
+          # Split it into training data and testing data
+          self.train_X, self.test_X, self.train_y, self.test_y = train_test_split(X, y)
+          print("Data: " + str(dataName))
+          print("Sizes: (train=" + str(len(self.train_X)) + ", test=" + str(len(self.test_X)) + ")")
+  
+          self.measureOverfitting("RandomForests")
     elif self.classificationType == "test":
       dataReader = DataReader(False)
       X, y = dataReader.read("google_dataset.csv")
